@@ -8,7 +8,7 @@ df = pd.read_csv("results.csv")
 df["total_goals"] = df["home_score"] + df["away_score"]
 
 # # Select the top 10 most frequent tournament types for readability
-top_tournaments = df["tournament"].value_counts().index[:20]
+top_tournaments = df["tournament"].value_counts()
 df_filtered = df[df["tournament"].isin(top_tournaments)]
 
 # Set plot style
@@ -31,3 +31,7 @@ plt.xlabel("Total Goals per Match")
 plt.ylabel("Frequency")
 plt.title("Histogram of Total Goals per Match")
 plt.show()
+
+
+pd.set_option("display.max_rows", None)
+print(top_tournaments)
