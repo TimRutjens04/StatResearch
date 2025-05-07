@@ -1,22 +1,60 @@
 from gym import *
+import queue
+from threading import Thread
 
 # Example usage
 monitor = Monitor(GymConfig())
+user_queue = queue.Queue()
+active_users = set()
+user_counter = 0
+running = True
+
+def user_manager():
+    global user_counter
+    while running:
+        machine_types = list(MachineTypes)
+        random_workout = random.sample(machine_types, k=random.randint(2, 5))
+
+        join_box = random.random() < 0.1       
+        user_queue.put((user_counter, random_workout, join_box))
+        user_counter += 1
+
+        time.sleep(2)
+
+def process_users():
+    while running:
+        try:
+            user_id, workout, join_box = user_queue.get(timeout=1)
+            if join_box:
+                print(f"User {user_id} will join box class")
+                t = Thread(target=user_thread, args=(user_id, [], join_box))
+            else:
+                t = Thread(target=user_thread, args=(user_id, workout, join_box))
+            t.start()
+        except queue.Empty:
+            continue
+
 
 def user_thread(user_id, routines, join_box = False):
     """Simulate a user working out with their preferred machines"""
-    monitor.complete_warmup(user_id)
+    print(f"User {user_id} waiting to enter")
+    monitor.capacity.acquire()
+    try:
+        monitor.complete_warmup(user_id)
 
-    if join_box:
-        monitor.join_box_class(user_id)
-    
-    for machine_type in routines:
-        machine_id = monitor.request_machine(user_id, machine_type)
-        print(f"User {user_id} exercising on {machine_type.value}")
-        # Simulate exercise time
-        time.sleep(random.uniform(1, 3))
-        monitor.release_machine(machine_id)
-        print(f"User {user_id} finished with {machine_type.value}")
+        if join_box:
+            monitor.join_box_class(user_id)
+        
+        for machine_type in routines:
+            machine_id = monitor.request_machine(user_id, machine_type)
+            print(f"User {user_id} exercising on {machine_type.value}")
+            # Simulate exercise time
+            time.sleep(random.uniform(1, 3))
+            monitor.release_machine(machine_id)
+            print(f"User {user_id} finished with {machine_type.value}")
+    finally:
+        monitor.capacity.release()
+        print(f"User {user_id} left the gym")
     
 def spotter_thread():
     while True:
@@ -26,27 +64,25 @@ def spotter_thread():
             time.sleep(0.1)
 
 if __name__ == "__main__":
-    # Create workout routines for different users
-    workouts = [
-        [MachineTypes.TREADMILL, MachineTypes.BENCH_PRESS],
-        [MachineTypes.LEG_PRESS, MachineTypes.CALF_RAISE],
-        [MachineTypes.CHEST_PRESS, MachineTypes.LAT_PULLDOWN],
-        [MachineTypes.TREADMILL, MachineTypes.LEG_PRESS],
-        [MachineTypes.BENCH_PRESS, MachineTypes.CHEST_PRESS],
-    ]
+    try:
+        # Start the spotter thread
+        spotter = Thread(target=spotter_thread)
+        spotter.start()
 
-    spotter = Thread(target=spotter_thread, daemon = True)
-    spotter.start()
+        # Start user manager thread
+        user_manager_thread = Thread(target=user_manager)
+        user_manager_thread.start()
 
-    # Create and start threads for 5 users
-    threads = []
-    for i in range(5):
-        join_box = i < 3 #First 3 users join box class
-        t = Thread(target=user_thread, args=(i, workouts[i], join_box))
-        threads.append(t)
-        t.start()
+        # Start user processor thread
+        user_processor_thread = Thread(target=process_users)
+        user_processor_thread.start()
 
-    for t in threads:
-        t.join()
+        # Keep main thread alive
+        while True:
+            time.sleep(1)
 
-    print("Gym session completed!")
+    except KeyboardInterrupt:
+        print("\nShutting down gym...")
+        running = False
+        user_manager_thread.join(timeout=1)
+        user_processor_thread.join(timeout=1)

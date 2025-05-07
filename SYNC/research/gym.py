@@ -1,4 +1,4 @@
-from threading import Lock, Semaphore, Thread, Barrier, Condition
+from threading import Lock, Semaphore, Condition
 from enum import Enum
 from dataclasses import dataclass
 from typing import Dict
@@ -49,6 +49,9 @@ class SuperMonitor(object):
 class Monitor(SuperMonitor):
     def __init__(self, config: GymConfig):
         self.init_lock()
+
+        #Capacity control (fencing)
+        self.capacity = Semaphore(20)
 
         self.needs_spotter = self.Condition()
         self.spotter_available = False
